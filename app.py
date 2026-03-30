@@ -27,13 +27,13 @@ if not st.session_state["authenticated"]:
 # --- DATA LOADING ---
 @st.cache_data(ttl=600) 
 def load_data():
-    url = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx:out:csv&sheet={SHEET_NAME}"
-    df = pd.read_csv(url)
+    url = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv&sheet={SHEET_NAME}"
+    df = pd.read_csv(url, header=0)
     
     # Clean up column names (removes hidden spaces)
     df.columns = df.columns.str.strip()
     
-    # SAFETY: Force standard names on the first 5 columns just in case Google gets weird
+    # 1. FORCE clean headers on the first 5 columns by position to prevent the ['Site'] error
     if len(df.columns) >= 5:
         df.columns.values[0] = 'Site'
         df.columns.values[1] = 'DA'
@@ -49,8 +49,7 @@ def load_data():
         if col in df.columns:
             df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
             
-    # FEATURE 2: Turn text into a clickable link!
-    # If the site doesn't start with http, we add it so it's a valid link
+    # 2. FEATURE: Turn text into a clickable link!
     def make_clickable(site):
         site_str = str(site).strip()
         if not site_str.startswith('http'):
@@ -72,10 +71,15 @@ except Exception as e:
 # --- SIDEBAR FILTERS ---
 st.sidebar.header("🔍 Filter Sites")
 
-# FEATURE 1: Niche Filter
-# We look for a column named 'Niche'. If it doesn't exist, we don't show the filter.
-if 'Niche' in df.columns:
-    all_niches = sorted(df['Niche'].dropna().unique().tolist())
+# Check if Niche column exists (We look past the first 5 columns we renamed)
+# If your Niche column has a slightly different name, change it here!
+niche_col_name = 'Niche' 
+niche_exists = niche_col_name in df.columns
+
+if niche_exists:
+    # Fill empty niches with 'General' so the filter doesn't break
+    df[niche_col_name] = df[niche_col_name].fillna('General').astype(str)
+    all_niches = sorted(df[niche_col_name].dropna().unique().tolist())
     selected_niches = st.sidebar.multiselect("Select Niches", all_niches, default=all_niches)
 else:
     selected_niches = []
@@ -107,8 +111,8 @@ mask = (
 )
 
 # Apply niche filter if column exists and user made selections
-if 'Niche' in df.columns and selected_niches:
-    mask = mask & (df['Niche'].isin(selected_niches))
+if niche_exists and selected_niches:
+    mask = mask & (df[niche_col_name].isin(selected_niches))
 
 filtered_df = df[mask]
 
@@ -116,10 +120,10 @@ filtered_df = df[mask]
 st.title("🌐 Guest Post Inventory")
 st.write(f"Showing **{len(filtered_df)}** matching websites out of {len(df)} total.")
 
-# Safe columns to show - added 'Niche' to the list
+# Build the display columns list
 display_cols = ['Site Link', 'DA', 'DR', 'Ahrefs Traffic', 'Cost (USD)']
-if 'Niche' in df.columns:
-    display_cols.append('Niche')
+if niche_exists:
+    display_cols.append(niche_col_name)
 
 # Display the table with interactive links
 st.dataframe(
@@ -130,7 +134,7 @@ st.dataframe(
         "Site Link": st.column_config.LinkColumn(
             "Site", 
             help="Click to open the domain",
-            display_text="Open Website" # This makes it clean so it doesn't show the massive URL
+            display_text="Open Website"
         )
     }
 )
