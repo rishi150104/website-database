@@ -72,7 +72,6 @@ except Exception as e:
 st.sidebar.header("🔍 Filter Sites")
 
 # Check if Niche column exists (We look past the first 5 columns we renamed)
-# If your Niche column has a slightly different name, change it here!
 niche_col_name = 'Niche' 
 niche_exists = niche_col_name in df.columns
 
@@ -125,7 +124,7 @@ display_cols = ['Site Link', 'DA', 'DR', 'Ahrefs Traffic', 'Cost (USD)']
 if niche_exists:
     display_cols.append(niche_col_name)
 
-# Display the table with interactive links
+# Display the table with interactive links showing the actual URL
 st.dataframe(
     filtered_df[display_cols], 
     use_container_width=True, 
@@ -133,8 +132,7 @@ st.dataframe(
     column_config={
         "Site Link": st.column_config.LinkColumn(
             "Site", 
-            help="Click to open the domain",
-            display_text="Open Website"
+            help="Click to open the domain"
         )
     }
 )
