@@ -3,7 +3,7 @@ import pandas as pd
 
 # --- CONFIGURATION ---
 # Replace this with the ID from your Google Sheet URL
-SHEET_ID = "1mZRmzqJj2JQ7ustMp61GQkkabQPoyX2gE9pHZYNo1Ng/edit?gid=0#gid=0"
+SHEET_ID = "1mZRmzqJj2JQ7ustMp61GQkkabQPoyX2gE9pHZYNo1Ng"
 SHEET_NAME = "Sheet1" # Set to the exact name of your main tab
 PASSWORD = "123" # Set your desired password here
 
