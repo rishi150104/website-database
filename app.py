@@ -2,10 +2,9 @@ import streamlit as st
 import pandas as pd
 
 # --- CONFIGURATION ---
-# Replace this with the ID from your Google Sheet URL
 SHEET_ID = "1mZRmzqJj2JQ7ustMp61GQkkabQPoyX2gE9pHZYNo1Ng"
-SHEET_NAME = "Sheet1" # Set to the exact name of your main tab
-PASSWORD = "123" # Set your desired password here
+SHEET_NAME = "Sheet1" 
+PASSWORD = "123" 
 
 # --- PAGE SETUP ---
 st.set_page_config(page_title="Guest Post Database", layout="wide")
@@ -26,27 +25,27 @@ if not st.session_state["authenticated"]:
     st.stop()
 
 # --- DATA LOADING ---
-@st.cache_data(ttl=600) # Refreshes data every 10 minutes
+@st.cache_data(ttl=600) 
 def load_data():
     url = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv&sheet={SHEET_NAME}"
-    df = pd.read_csv(url)
     
-    # 1. Clean up column names (removes hidden spaces like 'Niche ')
-    df.columns = df.columns.str.strip()
+    # Force read data, treating the very first row as data so we can map it by positions
+    df = pd.read_csv(url, header=0)
     
-    # 2. Drop empty rows and columns that Google sometimes adds at the end
-    df = df.dropna(subset=['Site']) # Ensures we don't load rows with no website
-    df = df.loc[:, ~df.columns.str.contains('^Unnamed')]
+    # 🚨 OVERRIDE HEADERS: Force name mapped to the exact position of columns in your sheet
+    if len(df.columns) >= 5:
+        df.columns.values[0] = 'Site'
+        df.columns.values[1] = 'DA'
+        df.columns.values[2] = 'DR'
+        df.columns.values[3] = 'Ahrefs Traffic'
+        df.columns.values[4] = 'Cost (USD)'
+        
+    # Remove any empty rows where no website exists
+    df = df.dropna(subset=['Site'])
     
-    # 3. Fill empty niche rows with "General" so they don't break the filters
-    if 'Niche' in df.columns:
-        df['Niche'] = df['Niche'].fillna('General')
-    
-    # 4. Ensure metrics are numbers and not read as text
-    numeric_cols = ['DR', 'DA', 'Ahrefs Traffic', 'Cost (USD)']
-    for col in numeric_cols:
-        if col in df.columns:
-            df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
+    # Convert metric columns to numbers safely (eliminating text issues)
+    for col in ['DA', 'DR', 'Ahrefs Traffic', 'Cost (USD)']:
+        df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
             
     return df
 
@@ -59,14 +58,7 @@ except Exception as e:
 # --- SIDEBAR FILTERS ---
 st.sidebar.header("🔍 Filter Sites")
 
-# Check if Niche column exists, if not use a generic backup
-if 'Niche' in df.columns:
-    all_niches = sorted(df['Niche'].dropna().unique().tolist())
-    selected_niches = st.sidebar.multiselect("Select Niches", all_niches, default=all_niches)
-else:
-    selected_niches = []
-
-# Metrics Filters (Text Input boxes as requested)
+# Metrics Filters
 col1, col2 = st.sidebar.columns(2)
 with col1:
     min_dr = st.text_input("Min DR", value="0")
@@ -76,7 +68,6 @@ with col2:
     max_cost = st.text_input("Max Cost ($)", value="5000")
 
 # --- FILTERING LOGIC ---
-# Convert inputs to integers safely
 try:
     f_dr = int(min_dr)
     f_da = int(min_da)
@@ -86,7 +77,7 @@ except ValueError:
     st.warning("⚠️ Please enter valid numbers (no letters or symbols) in the filter boxes.")
     st.stop()
 
-# Start with keeping everything
+# Start with keeping everything based on numeric columns
 mask = (
     (df['DR'] >= f_dr) &
     (df['DA'] >= f_da) &
@@ -94,23 +85,14 @@ mask = (
     (df['Cost (USD)'] <= f_cost)
 )
 
-# Apply niche filter only if user made selections
-if 'Niche' in df.columns and selected_niches:
-    mask = mask & (df['Niche'].isin(selected_niches))
-
 filtered_df = df[mask]
 
 # --- DISPLAY ---
 st.title("🌐 Guest Post Inventory")
 st.write(f"Showing **{len(filtered_df)}** matching websites out of {len(df)} total.")
 
-# SELECTING COLUMNS TO SHOW (Protects your vendor names and internal notes)
-possible_display_cols = [
-    'Site', 'DA', 'DR', 'Ahrefs Traffic', 
-    'Cost (USD)', 'Cost CBD (USD)', 'Niche', 'Guidelines'
-]
-# Only show the columns that actually exist in your sheet
-display_cols = [col for col in possible_display_cols if col in df.columns]
+# Safe columns to show
+display_cols = ['Site', 'DA', 'DR', 'Ahrefs Traffic', 'Cost (USD)']
 
 # Display the table
 st.dataframe(
