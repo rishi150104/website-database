@@ -6,7 +6,7 @@ import pandas as pd
 # Example: https://docs.google.com/spreadsheets/d/1AbC_123/edit -> ID is '1AbC_123'
 SHEET_ID = "1mZRmzqJj2JQ7ustMp61GQkkabQPoyX2gE9pHZYNo1Ng/edit?gid=0#gid=0"
 SHEET_NAME = "Sheet1" # Change if your tab is named differently
-PASSWORD = "GuestPost2024" # Set your desired password here
+PASSWORD = "123" # Set your desired password here
 
 # --- PAGE SETUP ---
 st.set_page_config(page_title="Guest Post Database", layout="wide")
