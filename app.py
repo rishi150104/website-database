@@ -27,12 +27,13 @@ if not st.session_state["authenticated"]:
 # --- DATA LOADING ---
 @st.cache_data(ttl=600) 
 def load_data():
-    url = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv&sheet={SHEET_NAME}"
+    url = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx:out:csv&sheet={SHEET_NAME}"
+    df = pd.read_csv(url)
     
-    # Force read data, treating the very first row as data so we can map it by positions
-    df = pd.read_csv(url, header=0)
+    # Clean up column names (removes hidden spaces)
+    df.columns = df.columns.str.strip()
     
-    # 🚨 OVERRIDE HEADERS: Force name mapped to the exact position of columns in your sheet
+    # SAFETY: Force standard names on the first 5 columns just in case Google gets weird
     if len(df.columns) >= 5:
         df.columns.values[0] = 'Site'
         df.columns.values[1] = 'DA'
@@ -40,12 +41,25 @@ def load_data():
         df.columns.values[3] = 'Ahrefs Traffic'
         df.columns.values[4] = 'Cost (USD)'
         
-    # Remove any empty rows where no website exists
+    # Drop rows with no URL
     df = df.dropna(subset=['Site'])
     
-    # Convert metric columns to numbers safely (eliminating text issues)
+    # Convert metrics to numbers
     for col in ['DA', 'DR', 'Ahrefs Traffic', 'Cost (USD)']:
-        df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
+        if col in df.columns:
+            df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
+            
+    # FEATURE 2: Turn text into a clickable link!
+    # If the site doesn't start with http, we add it so it's a valid link
+    def make_clickable(site):
+        site_str = str(site).strip()
+        if not site_str.startswith('http'):
+            link = f"https://{site_str}"
+        else:
+            link = site_str
+        return link
+
+    df['Site Link'] = df['Site'].apply(make_clickable)
             
     return df
 
@@ -57,6 +71,14 @@ except Exception as e:
 
 # --- SIDEBAR FILTERS ---
 st.sidebar.header("🔍 Filter Sites")
+
+# FEATURE 1: Niche Filter
+# We look for a column named 'Niche'. If it doesn't exist, we don't show the filter.
+if 'Niche' in df.columns:
+    all_niches = sorted(df['Niche'].dropna().unique().tolist())
+    selected_niches = st.sidebar.multiselect("Select Niches", all_niches, default=all_niches)
+else:
+    selected_niches = []
 
 # Metrics Filters
 col1, col2 = st.sidebar.columns(2)
@@ -74,10 +96,9 @@ try:
     f_traffic = int(min_traffic)
     f_cost = int(max_cost)
 except ValueError:
-    st.warning("⚠️ Please enter valid numbers (no letters or symbols) in the filter boxes.")
+    st.warning("⚠️ Please enter valid numbers in the filter boxes.")
     st.stop()
 
-# Start with keeping everything based on numeric columns
 mask = (
     (df['DR'] >= f_dr) &
     (df['DA'] >= f_da) &
@@ -85,20 +106,33 @@ mask = (
     (df['Cost (USD)'] <= f_cost)
 )
 
+# Apply niche filter if column exists and user made selections
+if 'Niche' in df.columns and selected_niches:
+    mask = mask & (df['Niche'].isin(selected_niches))
+
 filtered_df = df[mask]
 
 # --- DISPLAY ---
 st.title("🌐 Guest Post Inventory")
 st.write(f"Showing **{len(filtered_df)}** matching websites out of {len(df)} total.")
 
-# Safe columns to show
-display_cols = ['Site', 'DA', 'DR', 'Ahrefs Traffic', 'Cost (USD)']
+# Safe columns to show - added 'Niche' to the list
+display_cols = ['Site Link', 'DA', 'DR', 'Ahrefs Traffic', 'Cost (USD)']
+if 'Niche' in df.columns:
+    display_cols.append('Niche')
 
-# Display the table
+# Display the table with interactive links
 st.dataframe(
     filtered_df[display_cols], 
     use_container_width=True, 
-    hide_index=True
+    hide_index=True,
+    column_config={
+        "Site Link": st.column_config.LinkColumn(
+            "Site", 
+            help="Click to open the domain",
+            display_text="Open Website" # This makes it clean so it doesn't show the massive URL
+        )
+    }
 )
 
 if st.sidebar.button("Logout"):
