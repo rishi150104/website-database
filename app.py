@@ -3,9 +3,8 @@ import pandas as pd
 
 # --- CONFIGURATION ---
 # Replace this with the ID from your Google Sheet URL
-# Example: https://docs.google.com/spreadsheets/d/1AbC_123/edit -> ID is '1AbC_123'
 SHEET_ID = "1mZRmzqJj2JQ7ustMp61GQkkabQPoyX2gE9pHZYNo1Ng/edit?gid=0#gid=0"
-SHEET_NAME = "Sheet1" # Change if your tab is named differently
+SHEET_NAME = "Sheet1" # Set to the exact name of your main tab
 PASSWORD = "123" # Set your desired password here
 
 # --- PAGE SETUP ---
@@ -31,22 +30,41 @@ if not st.session_state["authenticated"]:
 def load_data():
     url = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv&sheet={SHEET_NAME}"
     df = pd.read_csv(url)
-    # Clean up column names (remove any extra spaces)
+    
+    # 1. Clean up column names (removes hidden spaces like 'Niche ')
     df.columns = df.columns.str.strip()
+    
+    # 2. Drop empty rows and columns that Google sometimes adds at the end
+    df = df.dropna(subset=['Site']) # Ensures we don't load rows with no website
+    df = df.loc[:, ~df.columns.str.contains('^Unnamed')]
+    
+    # 3. Fill empty niche rows with "General" so they don't break the filters
+    if 'Niche' in df.columns:
+        df['Niche'] = df['Niche'].fillna('General')
+    
+    # 4. Ensure metrics are numbers and not read as text
+    numeric_cols = ['DR', 'DA', 'Ahrefs Traffic', 'Cost (USD)']
+    for col in numeric_cols:
+        if col in df.columns:
+            df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
+            
     return df
 
 try:
     df = load_data()
 except Exception as e:
-    st.error("Could not connect to Google Sheets. Check your Sheet ID and Permissions.")
+    st.error(f"Could not connect to Google Sheets. Error: {e}")
     st.stop()
 
 # --- SIDEBAR FILTERS ---
 st.sidebar.header("🔍 Filter Sites")
 
-# Niche Filter (Multi-select)
-all_niches = sorted(df['Niche'].dropna().unique().tolist())
-selected_niches = st.sidebar.multiselect("Select Niches", all_niches, default=all_niches)
+# Check if Niche column exists, if not use a generic backup
+if 'Niche' in df.columns:
+    all_niches = sorted(df['Niche'].dropna().unique().tolist())
+    selected_niches = st.sidebar.multiselect("Select Niches", all_niches, default=all_niches)
+else:
+    selected_niches = []
 
 # Metrics Filters (Text Input boxes as requested)
 col1, col2 = st.sidebar.columns(2)
@@ -65,29 +83,34 @@ try:
     f_traffic = int(min_traffic)
     f_cost = int(max_cost)
 except ValueError:
-    st.warning("Please enter valid numbers in the filter boxes.")
+    st.warning("⚠️ Please enter valid numbers (no letters or symbols) in the filter boxes.")
     st.stop()
 
+# Start with keeping everything
 mask = (
-    (df['Main Niche'].isin(selected_niches)) &
     (df['DR'] >= f_dr) &
     (df['DA'] >= f_da) &
     (df['Ahrefs Traffic'] >= f_traffic) &
     (df['Cost (USD)'] <= f_cost)
 )
 
+# Apply niche filter only if user made selections
+if 'Niche' in df.columns and selected_niches:
+    mask = mask & (df['Niche'].isin(selected_niches))
+
 filtered_df = df[mask]
 
 # --- DISPLAY ---
 st.title("🌐 Guest Post Inventory")
-st.write(f"Showing **{len(filtered_df)}** matching websites.")
+st.write(f"Showing **{len(filtered_df)}** matching websites out of {len(df)} total.")
 
-# SELECTING COLUMNS TO SHOW (Hide Vendor info and internal data)
-display_cols = [
+# SELECTING COLUMNS TO SHOW (Protects your vendor names and internal notes)
+possible_display_cols = [
     'Site', 'DA', 'DR', 'Ahrefs Traffic', 
-    'Cost (USD)', 'Cost CBD (USD)', 'Niche', 
-    'Main Niche', 'Guidelines'
+    'Cost (USD)', 'Cost CBD (USD)', 'Niche', 'Guidelines'
 ]
+# Only show the columns that actually exist in your sheet
+display_cols = [col for col in possible_display_cols if col in df.columns]
 
 # Display the table
 st.dataframe(
