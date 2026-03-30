@@ -45,7 +45,7 @@ except Exception as e:
 st.sidebar.header("🔍 Filter Sites")
 
 # Niche Filter (Multi-select)
-all_niches = sorted(df['Main Niche'].dropna().unique().tolist())
+all_niches = sorted(df['Niche'].dropna().unique().tolist())
 selected_niches = st.sidebar.multiselect("Select Niches", all_niches, default=all_niches)
 
 # Metrics Filters (Text Input boxes as requested)
